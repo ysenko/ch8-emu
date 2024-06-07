@@ -1,3 +1,1 @@
-mod input {
-    
-}
+mod input {}

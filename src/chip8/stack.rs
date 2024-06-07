@@ -1,3 +1,1 @@
-mod stack {
-    
-}
+mod stack {}

@@ -1,3 +1,1 @@
-mod timers {
-    
-}
+mod timers {}

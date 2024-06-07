@@ -1,3 +1,1 @@
-mod display {
-    
-}
+mod display {}

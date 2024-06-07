@@ -24,7 +24,6 @@ impl Memory {
         }
     }
 
-
     pub fn write_byte(&mut self, address: usize, value: u8) -> Result<(), MemoryError> {
         if address >= MEMORY_SIZE {
             Err(MemoryError::AddressOutOfBounds)
@@ -33,9 +32,7 @@ impl Memory {
             Ok(())
         }
     }
-
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -70,7 +67,10 @@ mod tests {
         let memory = Memory::new();
         let address = 0x5000;
 
-        assert_eq!(memory.read_byte(address), Err(MemoryError::AddressOutOfBounds));
+        assert_eq!(
+            memory.read_byte(address),
+            Err(MemoryError::AddressOutOfBounds)
+        );
     }
 
     #[test]
@@ -81,6 +81,6 @@ mod tests {
 
         let result = memory.write_byte(address, value);
 
-        assert_eq!(result, Err(MemoryError::AddressOutOfBounds));   
+        assert_eq!(result, Err(MemoryError::AddressOutOfBounds));
     }
 }
