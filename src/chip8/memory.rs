@@ -47,8 +47,9 @@ mod tests {
         let address = 0x200;
         let mut memory = Memory::new();
 
-        memory.write_byte(address, value);
+        let res = memory.write_byte(address, value);
 
+        assert!(res.is_ok());
         assert_eq!(memory.read_byte(address).unwrap(), value);
     }
 
