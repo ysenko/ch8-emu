@@ -1,6 +1,5 @@
-use std::fmt::Error;
-
 use opcodes::Opcode;
+use std::convert::From;
 
 mod display;
 mod input;
@@ -11,6 +10,17 @@ mod stack;
 mod timers;
 
 const PROGRAM_START_ADDRESS: usize = 0x200;
+
+#[derive(Debug, PartialEq)]
+pub enum Chip8Error {
+    StackError(stack::StackError),
+}
+
+impl From<stack::StackError> for Chip8Error {
+    fn from(err: stack::StackError) -> Chip8Error {
+        Chip8Error::StackError(err)
+    }
+}
 
 #[derive(Debug)]
 pub struct Chip8 {
@@ -43,14 +53,21 @@ impl Chip8 {
         Ok(())
     }
 
-    fn execute(&mut self, op: Opcode) -> Result<(), Error> {
+    fn execute(&mut self, op: Opcode) -> Result<(), Chip8Error> {
         match op {
             Opcode::AddByte(vx, val) => self.add_vx_byte(vx, val),
             Opcode::AddI(vx) => self.add_i_vx(vx),
             Opcode::AddReg(vx, vy) => self.add_reg(vx, vy),
             Opcode::And(vx, vy) => self.and(vx, vy),
+            Opcode::Call(addr) => self.call(addr)?,
             _ => unimplemented!(),
         }
+        Ok(())
+    }
+
+    fn call(&mut self, addr: u16) -> Result<(), Chip8Error> {
+        self.stack.push(self.registers.pc)?;
+        self.registers.pc = addr;
         Ok(())
     }
 
@@ -188,5 +205,32 @@ mod tests {
         chip8.execute(Opcode::And(0x0, 0x1)).unwrap();
 
         assert_eq!(chip8.registers.read_v(0x0), 0b10001000);
+    }
+    #[test]
+    fn test_chip8_execute_call() {
+        let mut chip8 = Chip8::new();
+        chip8.registers.pc = 0x200;
+
+        chip8.execute(Opcode::Call(0x300)).unwrap();
+
+        assert_eq!(chip8.stack.pop(), Ok(0x200));
+        assert_eq!(chip8.registers.pc, 0x300);
+    }
+
+    #[test]
+    fn test_chip8_execute_call_stack_overflow() {
+        let mut chip8 = Chip8::new();
+        chip8.registers.pc = 0x200;
+        for _ in 0..16 {
+            chip8.stack.push(0x200).unwrap();
+        }
+
+        let result = chip8.execute(Opcode::Call(0x300));
+
+        assert_eq!(
+            result.unwrap_err(),
+            Chip8Error::StackError(stack::StackError::StackOverflow)
+        );
+        assert_eq!(chip8.registers.pc, 0x200);
     }
 }
