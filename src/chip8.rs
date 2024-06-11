@@ -76,11 +76,21 @@ impl Chip8 {
             Opcode::Or(vx, vy) => self.or(vx, vy),
             Opcode::Random(vx, byte) => self.random(vx, byte),
             Opcode::RegDump(vx) => self.reg_dump(vx)?,
+            Opcode::RegLoad(vx) => self.reg_load(vx)?,
             _ => unimplemented!(),
         }
         Ok(())
     }
 
+    fn reg_load(&mut self, vx: u8) -> Result<(), Chip8Error> {
+        for reg in 0..=vx {
+            let reg_val = self
+                .memory
+                .read_byte(self.registers.i as usize + reg as usize)?;
+            self.registers.write_v(reg, reg_val);
+        }
+        Ok(())
+    }
     fn reg_dump(&mut self, vx: u8) -> Result<(), Chip8Error> {
         for reg in 0..=vx {
             let reg_val = self.registers.read_v(reg);
@@ -384,6 +394,31 @@ mod tests {
         chip8.registers.i = 0xFFFF;
 
         let result = chip8.execute(Opcode::RegDump(0x3));
+
+        assert_eq!(
+            result.unwrap_err(),
+            Chip8Error::MemoryError(memory::MemoryError::AddressOutOfBounds)
+        );
+    }
+    #[test]
+    fn test_chip8_execute_reg_load() {
+        let mut chip8 = Chip8::new();
+        chip8.registers.i = 0x100;
+        chip8.memory.write_byte(0x100, 0x42).unwrap();
+        chip8.memory.write_byte(0x101, 0x43).unwrap();
+
+        chip8.execute(Opcode::RegLoad(0x01)).unwrap();
+
+        assert_eq!(chip8.registers.read_v(0x0), 0x42);
+        assert_eq!(chip8.registers.read_v(0x1), 0x43);
+    }
+
+    #[test]
+    fn test_chip8_execute_reg_load_memory_error() {
+        let mut chip8 = Chip8::new();
+        chip8.registers.i = 0xFFFF;
+
+        let result = chip8.execute(Opcode::RegLoad(0x0));
 
         assert_eq!(
             result.unwrap_err(),
