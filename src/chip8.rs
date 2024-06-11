@@ -1,4 +1,4 @@
-use opcodes::Opcode;
+use opcodes::{Opcode, OpcodeError};
 use rand::random;
 use std::{convert::From, ops::Shl};
 
@@ -16,6 +16,7 @@ const PROGRAM_START_ADDRESS: usize = 0x200;
 pub enum Chip8Error {
     StackError(stack::StackError),
     MemoryError(memory::MemoryError),
+    OpcodeError(OpcodeError),
 }
 
 impl From<stack::StackError> for Chip8Error {
@@ -27,6 +28,12 @@ impl From<stack::StackError> for Chip8Error {
 impl From<memory::MemoryError> for Chip8Error {
     fn from(err: memory::MemoryError) -> Chip8Error {
         Chip8Error::MemoryError(err)
+    }
+}
+
+impl From<OpcodeError> for Chip8Error {
+    fn from(err: OpcodeError) -> Chip8Error {
+        Chip8Error::OpcodeError(err)
     }
 }
 
@@ -86,15 +93,60 @@ impl Chip8 {
             Opcode::SkipIfEqual(vx, byte) => self.skip_if_equal(vx, byte),
             Opcode::SkipIfNotEqual(vx, byte) => self.skip_if_not_equal(vx, byte),
             Opcode::SkipIfRegEqual(vx, vy) => self.skip_if_reg_equal(vx, vy),
+            Opcode::SkipIfRegNotEqual(vx, vy) => self.skip_if_reg_not_equal(vx, vy),
+            Opcode::Sub(vx, vy) => self.sub(vx, vy),
+            Opcode::SubN(vx, vy) => self.subn(vx, vy),
+            Opcode::Xor(vx, vy) => self.xor(vx, vy),
+            Opcode::StoreBCD(vx) => self.store_bcd(vx),
+            Opcode::SysAddr(addr) => {}
             Opcode::LoadSpriteAddr(vx) => unimplemented!(),
             Opcode::Draw(vx, vy, n) => unimplemented!(),
             Opcode::SkipIfKeyNotPressed(vx) => unimplemented!(),
             Opcode::SkipIfKeyPressed(vx) => unimplemented!(),
             Opcode::ClearDisplay => unimplemented!(),
-            Opcode::Sub(vx, vy) => self.sub(vx, vy),
-            _ => unimplemented!(),
+            Opcode::WaitForKey(vx) => unimplemented!(),
+            Opcode::Undefined(opcode) => {
+                return Err(Chip8Error::OpcodeError(OpcodeError::InvalidOpcode(opcode)))
+            }
         }
         Ok(())
+    }
+
+    fn subn(&mut self, vx: u8, vy: u8) {
+        let vx_val = self.registers.read_v(vx);
+        let vy_val = self.registers.read_v(vy);
+
+        let (result, borrow) = vy_val.overflowing_sub(vx_val);
+
+        self.registers.write_v(vx, result);
+        self.registers.write_v(0xF, if borrow { 0 } else { 1 });
+    }
+
+    fn skip_if_reg_not_equal(&mut self, vx: u8, vy: u8) {
+        let vx_val = self.registers.read_v(vx);
+        let vy_val = self.registers.read_v(vy);
+
+        if vx_val != vy_val {
+            self.registers.pc += 2;
+        }
+    }
+
+    fn xor(&mut self, vx: u8, vy: u8) {
+        let vx_val = self.registers.read_v(vx);
+        let vy_val = self.registers.read_v(vy);
+
+        let result = vx_val ^ vy_val;
+
+        self.registers.write_v(vx, result);
+    }
+
+    fn store_bcd(&mut self, vx: u8) {
+        let vx_val = self.registers.read_v(vx);
+        let i = self.registers.i as usize;
+
+        self.memory.write_byte(i, vx_val / 100).unwrap();
+        self.memory.write_byte(i + 1, (vx_val / 10) % 10).unwrap();
+        self.memory.write_byte(i + 2, vx_val % 10).unwrap();
     }
 
     fn sub(&mut self, vx: u8, vy: u8) {
@@ -697,6 +749,87 @@ mod tests {
         chip8.registers.write_v(0x0, 0x0F);
         chip8.registers.write_v(0x1, 0x10);
         chip8.execute(Opcode::Sub(0x0, 0x1)).unwrap();
+        assert_eq!(chip8.registers.read_v(0x0), 0xFF);
+        assert_eq!(chip8.registers.read_v(0xF), 0x0);
+    }
+    #[test]
+    fn test_chip8_execute_store_bcd() {
+        let mut chip8 = Chip8::new();
+        chip8.registers.write_v(0x0, 123);
+        chip8.registers.i = 0x200;
+
+        chip8.execute(Opcode::StoreBCD(0x0)).unwrap();
+
+        assert_eq!(chip8.memory.read_byte(0x200), Ok(1));
+        assert_eq!(chip8.memory.read_byte(0x201), Ok(2));
+        assert_eq!(chip8.memory.read_byte(0x202), Ok(3));
+    }
+    #[test]
+    fn test_chip8_execute_xor() {
+        let mut chip8 = Chip8::new();
+        chip8.registers.write_v(0x0, 0b10101010);
+        chip8.registers.write_v(0x1, 0b11001100);
+
+        chip8.execute(Opcode::Xor(0x0, 0x1)).unwrap();
+
+        assert_eq!(chip8.registers.read_v(0x0), 0b01100110);
+    }
+
+    #[test]
+    fn test_chip8_execute_skip_if_reg_not_equal_skips() {
+        let mut chip8 = Chip8::new();
+        chip8.registers.write_v(0x0, 0x10);
+        chip8.registers.write_v(0x1, 0x20);
+        chip8.registers.pc = 0x200;
+
+        chip8.execute(Opcode::SkipIfRegNotEqual(0x0, 0x1)).unwrap();
+
+        assert_eq!(chip8.registers.pc, 0x202);
+    }
+
+    #[test]
+    fn test_chip8_execute_skip_if_reg_not_equal_not_skips() {
+        let mut chip8 = Chip8::new();
+        chip8.registers.write_v(0x0, 0x10);
+        chip8.registers.write_v(0x1, 0x10);
+        chip8.registers.pc = 0x200;
+
+        chip8.execute(Opcode::SkipIfRegNotEqual(0x0, 0x1)).unwrap();
+
+        assert_eq!(chip8.registers.pc, 0x200);
+    }
+    #[test]
+    fn test_chip8_execute_subn() {
+        let mut chip8 = Chip8::new();
+        chip8.registers.write_v(0x0, 0x5);
+        chip8.registers.write_v(0x1, 0x10);
+
+        chip8.execute(Opcode::SubN(0x0, 0x1)).unwrap();
+
+        assert_eq!(chip8.registers.read_v(0x0), 0xB);
+        assert_eq!(chip8.registers.read_v(0xF), 0x1);
+    }
+
+    #[test]
+    fn test_chip8_execute_subn_no_borrow() {
+        let mut chip8 = Chip8::new();
+        chip8.registers.write_v(0x0, 0x0F);
+        chip8.registers.write_v(0x1, 0x10);
+
+        chip8.execute(Opcode::SubN(0x0, 0x1)).unwrap();
+
+        assert_eq!(chip8.registers.read_v(0x0), 0x01);
+        assert_eq!(chip8.registers.read_v(0xF), 0x1);
+    }
+
+    #[test]
+    fn test_chip8_execute_subn_borrow() {
+        let mut chip8 = Chip8::new();
+        chip8.registers.write_v(0x0, 0x10);
+        chip8.registers.write_v(0x1, 0x0F);
+
+        chip8.execute(Opcode::SubN(0x0, 0x1)).unwrap();
+
         assert_eq!(chip8.registers.read_v(0x0), 0xFF);
         assert_eq!(chip8.registers.read_v(0xF), 0x0);
     }
