@@ -84,9 +84,43 @@ impl Chip8 {
             Opcode::ShiftLeft(vx) => self.shift_left(vx),
             Opcode::ShiftRight(vx) => self.shift_right(vx),
             Opcode::SkipIfEqual(vx, byte) => self.skip_if_equal(vx, byte),
+            Opcode::SkipIfNotEqual(vx, byte) => self.skip_if_not_equal(vx, byte),
+            Opcode::SkipIfRegEqual(vx, vy) => self.skip_if_reg_equal(vx, vy),
+            Opcode::LoadSpriteAddr(vx) => unimplemented!(),
+            Opcode::Draw(vx, vy, n) => unimplemented!(),
+            Opcode::SkipIfKeyNotPressed(vx) => unimplemented!(),
+            Opcode::SkipIfKeyPressed(vx) => unimplemented!(),
+            Opcode::ClearDisplay => unimplemented!(),
+            Opcode::Sub(vx, vy) => self.sub(vx, vy),
             _ => unimplemented!(),
         }
         Ok(())
+    }
+
+    fn sub(&mut self, vx: u8, vy: u8) {
+        let vx_val = self.registers.read_v(vx);
+        let vy_val = self.registers.read_v(vy);
+
+        let (result, borrow) = vx_val.overflowing_sub(vy_val);
+
+        self.registers.write_v(vx, result);
+        self.registers.write_v(0xF, if borrow { 0 } else { 1 });
+    }
+
+    fn skip_if_not_equal(&mut self, vx: u8, byte: u8) {
+        let vx_val = self.registers.read_v(vx);
+        if vx_val != byte {
+            self.registers.pc += 2;
+        }
+    }
+
+    fn skip_if_reg_equal(&mut self, vx: u8, vy: u8) {
+        let vx_val = self.registers.read_v(vx);
+        let vy_val = self.registers.read_v(vy);
+
+        if vx_val == vy_val {
+            self.registers.pc += 2;
+        }
     }
 
     fn skip_if_equal(&mut self, vx: u8, byte: u8) {
@@ -587,5 +621,83 @@ mod tests {
         chip8.execute(Opcode::SkipIfEqual(0x0, 0x1)).unwrap();
 
         assert_eq!(chip8.registers.pc, 0x200);
+    }
+    #[test]
+    fn test_chip8_execute_skip_if_reg_equal_skips() {
+        let mut chip8 = Chip8::new();
+        chip8.registers.write_v(0x0, 0x10);
+        chip8.registers.write_v(0x1, 0x10);
+        chip8.registers.pc = 0x200;
+
+        chip8.execute(Opcode::SkipIfRegEqual(0x0, 0x1)).unwrap();
+
+        assert_eq!(chip8.registers.pc, 0x202);
+    }
+
+    #[test]
+    fn test_chip8_execute_skip_if_reg_equal_not_skips() {
+        let mut chip8 = Chip8::new();
+        chip8.registers.write_v(0x0, 0x10);
+        chip8.registers.write_v(0x1, 0x20);
+        chip8.registers.pc = 0x200;
+
+        chip8.execute(Opcode::SkipIfRegEqual(0x0, 0x1)).unwrap();
+
+        assert_eq!(chip8.registers.pc, 0x200);
+    }
+    #[test]
+    fn test_chip8_execute_skip_if_not_equal_skips() {
+        let mut chip8 = Chip8::new();
+        chip8.registers.write_v(0x0, 0x10);
+        chip8.registers.pc = 0x200;
+
+        chip8.execute(Opcode::SkipIfNotEqual(0x0, 0x1)).unwrap();
+
+        assert_eq!(chip8.registers.pc, 0x202);
+    }
+
+    #[test]
+    fn test_chip8_execute_skip_if_not_equal_not_skips() {
+        let mut chip8 = Chip8::new();
+        chip8.registers.write_v(0x0, 0x10);
+        chip8.registers.pc = 0x200;
+
+        chip8.execute(Opcode::SkipIfNotEqual(0x0, 0x10)).unwrap();
+
+        assert_eq!(chip8.registers.pc, 0x200);
+    }
+
+    #[test]
+    fn test_chip8_execute_sub() {
+        let mut chip8 = Chip8::new();
+        chip8.registers.write_v(0x0, 0x10);
+        chip8.registers.write_v(0x1, 0x05);
+
+        chip8.execute(Opcode::Sub(0x0, 0x1)).unwrap();
+
+        assert_eq!(chip8.registers.read_v(0x0), 0x0B);
+        assert_eq!(chip8.registers.read_v(0xF), 0x1);
+    }
+
+    #[test]
+    fn test_chip8_execute_sub_no_borrow() {
+        let mut chip8 = Chip8::new();
+        chip8.registers.write_v(0x0, 0x10);
+        chip8.registers.write_v(0x1, 0x0F);
+
+        chip8.execute(Opcode::Sub(0x0, 0x1)).unwrap();
+
+        assert_eq!(chip8.registers.read_v(0x0), 0x01);
+        assert_eq!(chip8.registers.read_v(0xF), 0x1);
+    }
+
+    #[test]
+    fn test_chip8_execute_sub_borrow() {
+        let mut chip8 = Chip8::new();
+        chip8.registers.write_v(0x0, 0x0F);
+        chip8.registers.write_v(0x1, 0x10);
+        chip8.execute(Opcode::Sub(0x0, 0x1)).unwrap();
+        assert_eq!(chip8.registers.read_v(0x0), 0xFF);
+        assert_eq!(chip8.registers.read_v(0xF), 0x0);
     }
 }
