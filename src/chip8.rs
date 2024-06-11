@@ -48,9 +48,19 @@ impl Chip8 {
             Opcode::AddByte(vx, val) => self.add_vx_byte(vx, val),
             Opcode::AddI(vx) => self.add_i_vx(vx),
             Opcode::AddReg(vx, vy) => self.add_reg(vx, vy),
+            Opcode::And(vx, vy) => self.and(vx, vy),
             _ => unimplemented!(),
         }
         Ok(())
+    }
+
+    fn and(&mut self, vx: u8, vy: u8) {
+        let vx_val = self.registers.read_v(vx);
+        let vy_val = self.registers.read_v(vy);
+
+        let result = vx_val & vy_val;
+
+        self.registers.write_v(vx, result);
     }
 
     fn add_reg(&mut self, vx: u8, vy: u8) {
@@ -167,5 +177,16 @@ mod tests {
 
         assert_eq!(chip8.registers.read_v(0x0), 0x00);
         assert_eq!(chip8.registers.read_v(0xF), 0x1);
+    }
+
+    #[test]
+    fn test_chip8_execute_and() {
+        let mut chip8 = Chip8::new();
+        chip8.registers.write_v(0x0, 0b10101010);
+        chip8.registers.write_v(0x1, 0b11001100);
+
+        chip8.execute(Opcode::And(0x0, 0x1)).unwrap();
+
+        assert_eq!(chip8.registers.read_v(0x0), 0b10001000);
     }
 }
