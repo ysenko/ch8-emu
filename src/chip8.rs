@@ -1,4 +1,5 @@
 use opcodes::Opcode;
+use rand::random;
 use std::convert::From;
 
 mod display;
@@ -66,9 +67,15 @@ impl Chip8 {
             Opcode::LoadDelayTimer(vx) => self.load_delay_timer(vx),
             Opcode::LoadReg(vx, vy) => self.load_register(vx, vy),
             Opcode::Or(vx, vy) => self.or(vx, vy),
+            Opcode::Random(vx, byte) => self.random(vx, byte),
             _ => unimplemented!(),
         }
         Ok(())
+    }
+
+    fn random(&mut self, vx: u8, byte: u8) {
+        let random_byte = random::<u8>();
+        self.registers.write_v(vx, random_byte & byte);
     }
 
     fn or(&mut self, vx: u8, vy: u8) {
@@ -324,5 +331,14 @@ mod tests {
         chip8.execute(Opcode::Or(0x0, 0x1)).unwrap();
 
         assert_eq!(chip8.registers.read_v(0x0), 0b11101110);
+    }
+    #[test]
+    fn test_chip8_execute_random() {
+        let mut chip8 = Chip8::new();
+
+        chip8.execute(Opcode::Random(0x0, 0b11001100));
+
+        let result = chip8.registers.read_v(0x0);
+        assert_eq!(result & 0b11001100, result);
     }
 }
