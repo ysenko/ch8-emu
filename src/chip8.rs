@@ -63,9 +63,31 @@ impl Chip8 {
             Opcode::Jump(addr) => self.jump(addr),
             Opcode::JumpV0(addr) => self.jump_v0(addr),
             Opcode::LoadByte(vx, byte) => self.load_byte(vx, byte),
+            Opcode::LoadDelayTimer(vx) => self.load_delay_timer(vx),
+            Opcode::LoadReg(vx, vy) => self.load_register(vx, vy),
+            Opcode::Or(vx, vy) => self.or(vx, vy),
             _ => unimplemented!(),
         }
         Ok(())
+    }
+
+    fn or(&mut self, vx: u8, vy: u8) {
+        let vx_val = self.registers.read_v(vx);
+        let vy_val = self.registers.read_v(vy);
+
+        let result = vx_val | vy_val;
+
+        self.registers.write_v(vx, result);
+    }
+
+    fn load_register(&mut self, vx: u8, vy: u8) {
+        let vy_val = self.registers.read_v(vy);
+        self.registers.write_v(vx, vy_val);
+    }
+
+    fn load_delay_timer(&mut self, vx: u8) {
+        let delay_timer = self.timers.get_delay_timer();
+        self.registers.write_v(vx, delay_timer);
     }
 
     fn load_byte(&mut self, vx: u8, byte: u8) {
@@ -274,5 +296,33 @@ mod tests {
         chip8.execute(Opcode::LoadByte(0x0, 0xFF)).unwrap();
 
         assert_eq!(chip8.registers.read_v(0x0), 0xFF);
+    }
+    #[test]
+    fn test_chip8_execute_load_delay_timer() {
+        let mut chip8 = Chip8::new();
+        chip8.timers.set_delay_timer(0x10);
+
+        chip8.execute(Opcode::LoadDelayTimer(0x0)).unwrap();
+
+        assert_eq!(chip8.registers.read_v(0x0), 0x10);
+    }
+    #[test]
+    fn test_chip8_execute_load_register() {
+        let mut chip8 = Chip8::new();
+        chip8.registers.write_v(0x1, 0x42);
+
+        chip8.execute(Opcode::LoadReg(0x0, 0x1)).unwrap();
+
+        assert_eq!(chip8.registers.read_v(0x0), 0x42);
+    }
+    #[test]
+    fn test_chip8_execute_or() {
+        let mut chip8 = Chip8::new();
+        chip8.registers.write_v(0x0, 0b10101010);
+        chip8.registers.write_v(0x1, 0b11001100);
+
+        chip8.execute(Opcode::Or(0x0, 0x1)).unwrap();
+
+        assert_eq!(chip8.registers.read_v(0x0), 0b11101110);
     }
 }
