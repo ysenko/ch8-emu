@@ -1,6 +1,6 @@
 use opcodes::Opcode;
 use rand::random;
-use std::convert::From;
+use std::{convert::From, ops::Shl};
 
 mod display;
 mod input;
@@ -78,9 +78,35 @@ impl Chip8 {
             Opcode::RegDump(vx) => self.reg_dump(vx)?,
             Opcode::RegLoad(vx) => self.reg_load(vx)?,
             Opcode::Return => self.return_from()?,
+            Opcode::SetDelayTimer(vx) => self.set_delay_timer(vx),
+            Opcode::SetIndex(addr) => self.set_index(addr),
+            Opcode::SetSoundTimer(vx) => self.set_sound_timer(vx),
+            Opcode::ShiftLeft(vx) => self.shift_left(vx),
             _ => unimplemented!(),
         }
         Ok(())
+    }
+
+    fn shift_left(&mut self, vx: u8) {
+        let vx_val = self.registers.read_v(vx);
+        let overflow = vx_val & 0b10000000 != 0;
+
+        self.registers.write_v(vx, vx_val << 1);
+        self.registers.write_v(0xF, if overflow { 1 } else { 0 });
+    }
+
+    fn set_sound_timer(&mut self, vx: u8) {
+        let vx_val = self.registers.read_v(vx);
+        self.timers.set_sound_timer(vx_val);
+    }
+
+    fn set_index(&mut self, addr: u16) {
+        self.registers.i = addr;
+    }
+
+    fn set_delay_timer(&mut self, vx: u8) {
+        let vx_val = self.registers.read_v(vx);
+        self.timers.set_delay_timer(vx_val);
     }
 
     fn return_from(&mut self) -> Result<(), Chip8Error> {
@@ -453,5 +479,54 @@ mod tests {
             Chip8Error::StackError(stack::StackError::StackUnderflow)
         );
         assert_eq!(chip8.registers.pc, 0x200);
+    }
+    #[test]
+    fn test_chip8_execute_set_delay_timer() {
+        let mut chip8 = Chip8::new();
+        chip8.registers.write_v(0x0, 0x10);
+
+        chip8.execute(Opcode::SetDelayTimer(0x0)).unwrap();
+
+        assert_eq!(chip8.timers.get_delay_timer(), 0x10);
+    }
+
+    #[test]
+    fn test_chip8_execute_set_index() {
+        let mut chip8 = Chip8::new();
+
+        chip8.execute(Opcode::SetIndex(0x300)).unwrap();
+
+        assert_eq!(chip8.registers.i, 0x300);
+    }
+
+    #[test]
+    fn test_chip8_execute_set_sound_timer() {
+        let mut chip8 = Chip8::new();
+        chip8.registers.write_v(0x0, 0x10);
+
+        chip8.execute(Opcode::SetSoundTimer(0x0)).unwrap();
+
+        assert_eq!(chip8.timers.get_sound_timer(), 0x10);
+    }
+    #[test]
+    fn test_chip8_execute_shift_left_normal() {
+        let mut chip8 = Chip8::new();
+        chip8.registers.write_v(0x0, 0b00101010);
+
+        chip8.execute(Opcode::ShiftLeft(0x0)).unwrap();
+
+        assert_eq!(chip8.registers.read_v(0x0), 0b01010100);
+        assert_eq!(chip8.registers.read_v(0xF), 0x0);
+    }
+
+    #[test]
+    fn test_chip8_execute_shift_left_overflow() {
+        let mut chip8 = Chip8::new();
+        chip8.registers.write_v(0x0, 0b10000000);
+
+        chip8.execute(Opcode::ShiftLeft(0x0)).unwrap();
+
+        assert_eq!(chip8.registers.read_v(0x0), 0b00000000);
+        assert_eq!(chip8.registers.read_v(0xF), 0x1);
     }
 }
