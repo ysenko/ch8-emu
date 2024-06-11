@@ -82,9 +82,18 @@ impl Chip8 {
             Opcode::SetIndex(addr) => self.set_index(addr),
             Opcode::SetSoundTimer(vx) => self.set_sound_timer(vx),
             Opcode::ShiftLeft(vx) => self.shift_left(vx),
+            Opcode::ShiftRight(vx) => self.shift_right(vx),
             _ => unimplemented!(),
         }
         Ok(())
+    }
+
+    fn shift_right(&mut self, vx: u8) {
+        let vx_val = self.registers.read_v(vx);
+        let lsb = vx_val & 0b00000001;
+
+        self.registers.write_v(vx, vx_val >> 1);
+        self.registers.write_v(0xF, lsb);
     }
 
     fn shift_left(&mut self, vx: u8) {
@@ -509,7 +518,7 @@ mod tests {
         assert_eq!(chip8.timers.get_sound_timer(), 0x10);
     }
     #[test]
-    fn test_chip8_execute_shift_left_normal() {
+    fn test_chip8_execute_shift_left() {
         let mut chip8 = Chip8::new();
         chip8.registers.write_v(0x0, 0b00101010);
 
@@ -525,6 +534,27 @@ mod tests {
         chip8.registers.write_v(0x0, 0b10000000);
 
         chip8.execute(Opcode::ShiftLeft(0x0)).unwrap();
+
+        assert_eq!(chip8.registers.read_v(0x0), 0b00000000);
+        assert_eq!(chip8.registers.read_v(0xF), 0x1);
+    }
+    #[test]
+    fn test_chip8_execute_shift_right() {
+        let mut chip8 = Chip8::new();
+        chip8.registers.write_v(0x0, 0b10101010);
+
+        chip8.execute(Opcode::ShiftRight(0x0)).unwrap();
+
+        assert_eq!(chip8.registers.read_v(0x0), 0b01010101);
+        assert_eq!(chip8.registers.read_v(0xF), 0x0);
+    }
+
+    #[test]
+    fn test_chip8_execute_shift_right_overflow() {
+        let mut chip8 = Chip8::new();
+        chip8.registers.write_v(0x0, 0b00000001);
+
+        chip8.execute(Opcode::ShiftRight(0x0)).unwrap();
 
         assert_eq!(chip8.registers.read_v(0x0), 0b00000000);
         assert_eq!(chip8.registers.read_v(0xF), 0x1);
