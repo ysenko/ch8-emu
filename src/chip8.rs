@@ -1,3 +1,7 @@
+use std::fmt::Error;
+
+use opcodes::Opcode;
+
 mod display;
 mod input;
 mod memory;
@@ -38,6 +42,36 @@ impl Chip8 {
         self.load_rom(&rom);
         Ok(())
     }
+
+    fn execute(&mut self, op: Opcode) -> Result<(), Error> {
+        match op {
+            Opcode::AddByte(vx, val) => self.add_vx_byte(vx, val),
+            Opcode::AddI(vx) => self.add_i_vx(vx),
+            Opcode::AddReg(vx, vy) => self.add_reg(vx, vy),
+            _ => unimplemented!(),
+        }
+        Ok(())
+    }
+
+    fn add_reg(&mut self, vx: u8, vy: u8) {
+        let vx_val = self.registers.read_v(vx);
+        let vy_val = self.registers.read_v(vy);
+
+        let (result, overflow) = vx_val.overflowing_add(vy_val);
+
+        self.registers.write_v(vx, result);
+        self.registers.write_v(0xF, if overflow { 1 } else { 0 });
+    }
+
+    fn add_vx_byte(&mut self, vx: u8, val: u8) {
+        let result = self.registers.read_v(vx).wrapping_add(val);
+        self.registers.write_v(vx, result);
+    }
+
+    fn add_i_vx(&mut self, vx: u8) {
+        let vx_val = self.registers.read_v(vx) as u16;
+        self.registers.i = vx_val.wrapping_add(self.registers.i)
+    }
 }
 
 #[cfg(test)]
@@ -61,7 +95,7 @@ mod tests {
         assert_eq!(chip8.memory.read_byte(PROGRAM_START_ADDRESS + 2), Ok(0x56));
         assert_eq!(chip8.memory.read_byte(PROGRAM_START_ADDRESS + 3), Ok(0x78));
     }
-    
+
     #[test]
     fn test_chip8_load_rom_from_non_existing_file() {
         let mut chip8 = Chip8::new();
@@ -72,21 +106,66 @@ mod tests {
     #[test]
     fn test_chip8_load_rom_from_file() {
         let mut chip8 = Chip8::new();
-        
+
         // Create a temporary file with some bytes
         let temp_file_path = "./test_rom.ch8";
         std::fs::write(temp_file_path, &[0xAB, 0xCD, 0xEF]).unwrap();
-        
+
         // Load the ROM from the temporary file
         let result = chip8.load_rom_from_file(temp_file_path);
         assert!(result.is_ok());
-        
+
         // Verify that the ROM is loaded correctly into memory
         assert_eq!(chip8.memory.read_byte(PROGRAM_START_ADDRESS), Ok(0xAB));
         assert_eq!(chip8.memory.read_byte(PROGRAM_START_ADDRESS + 1), Ok(0xCD));
         assert_eq!(chip8.memory.read_byte(PROGRAM_START_ADDRESS + 2), Ok(0xEF));
-        
+
         // Delete the temporary file
         std::fs::remove_file(temp_file_path).unwrap();
+    }
+
+    #[test]
+    fn test_chip8_execute_add_byte() {
+        let mut chip8 = Chip8::new();
+        chip8.registers.write_v(0x0, 0x10);
+
+        chip8.execute(Opcode::AddByte(0x0, 0x20)).unwrap();
+
+        assert_eq!(chip8.registers.read_v(0x0), 0x30);
+    }
+
+    #[test]
+    fn test_chip8_execute_add_i() {
+        let mut chip8 = Chip8::new();
+        chip8.registers.write_v(0x0, 0x10);
+        chip8.registers.i = 0x100;
+
+        chip8.execute(Opcode::AddI(0x0)).unwrap();
+
+        assert_eq!(chip8.registers.i, 0x110);
+    }
+
+    #[test]
+    fn test_chip8_execute_add_reg_no_overflow() {
+        let mut chip8 = Chip8::new();
+        chip8.registers.write_v(0x0, 0x10);
+        chip8.registers.write_v(0x1, 0x20);
+
+        chip8.execute(Opcode::AddReg(0x0, 0x1)).unwrap();
+
+        assert_eq!(chip8.registers.read_v(0x0), 0x30);
+        assert_eq!(chip8.registers.read_v(0xF), 0x0);
+    }
+
+    #[test]
+    fn test_chip8_execute_add_reg_with_overflow() {
+        let mut chip8 = Chip8::new();
+        chip8.registers.write_v(0x0, 0xFF);
+        chip8.registers.write_v(0x1, 0x01);
+
+        chip8.execute(Opcode::AddReg(0x0, 0x1)).unwrap();
+
+        assert_eq!(chip8.registers.read_v(0x0), 0x00);
+        assert_eq!(chip8.registers.read_v(0xF), 0x1);
     }
 }

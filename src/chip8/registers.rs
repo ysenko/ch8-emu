@@ -1,11 +1,10 @@
-use std::convert::From;
+const DATA_REGISTER_COUNT: usize = 16;
 
-const DATA_REGISTER_COUNT: usize = 0xF;
-
+#[derive(Debug)]
 pub struct Registers {
     v: [u8; DATA_REGISTER_COUNT],
-    i: u16,
-    pc: u16,
+    pub i: u16,
+    pub pc: u16,
 }
 
 impl Registers {
