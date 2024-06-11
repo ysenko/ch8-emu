@@ -83,9 +83,17 @@ impl Chip8 {
             Opcode::SetSoundTimer(vx) => self.set_sound_timer(vx),
             Opcode::ShiftLeft(vx) => self.shift_left(vx),
             Opcode::ShiftRight(vx) => self.shift_right(vx),
+            Opcode::SkipIfEqual(vx, byte) => self.skip_if_equal(vx, byte),
             _ => unimplemented!(),
         }
         Ok(())
+    }
+
+    fn skip_if_equal(&mut self, vx: u8, byte: u8) {
+        let vx_val = self.registers.read_v(vx);
+        if vx_val == byte {
+            self.registers.pc += 2;
+        }
     }
 
     fn shift_right(&mut self, vx: u8) {
@@ -558,5 +566,26 @@ mod tests {
 
         assert_eq!(chip8.registers.read_v(0x0), 0b00000000);
         assert_eq!(chip8.registers.read_v(0xF), 0x1);
+    }
+    #[test]
+    fn test_chip8_execute_skip_if_equal_skips() {
+        let mut chip8 = Chip8::new();
+        chip8.registers.write_v(0x0, 0x10);
+        chip8.registers.pc = 0x200;
+
+        chip8.execute(Opcode::SkipIfEqual(0x0, 0x10)).unwrap();
+
+        assert_eq!(chip8.registers.pc, 0x202);
+    }
+
+    #[test]
+    fn test_chip8_execute_skip_if_equal_not_skips() {
+        let mut chip8 = Chip8::new();
+        chip8.registers.write_v(0x0, 0x10);
+        chip8.registers.pc = 0x200;
+
+        chip8.execute(Opcode::SkipIfEqual(0x0, 0x1)).unwrap();
+
+        assert_eq!(chip8.registers.pc, 0x200);
     }
 }
