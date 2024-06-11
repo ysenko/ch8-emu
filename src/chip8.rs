@@ -15,11 +15,18 @@ const PROGRAM_START_ADDRESS: usize = 0x200;
 #[derive(Debug, PartialEq)]
 pub enum Chip8Error {
     StackError(stack::StackError),
+    MemoryError(memory::MemoryError),
 }
 
 impl From<stack::StackError> for Chip8Error {
     fn from(err: stack::StackError) -> Chip8Error {
         Chip8Error::StackError(err)
+    }
+}
+
+impl From<memory::MemoryError> for Chip8Error {
+    fn from(err: memory::MemoryError) -> Chip8Error {
+        Chip8Error::MemoryError(err)
     }
 }
 
@@ -68,11 +75,20 @@ impl Chip8 {
             Opcode::LoadReg(vx, vy) => self.load_register(vx, vy),
             Opcode::Or(vx, vy) => self.or(vx, vy),
             Opcode::Random(vx, byte) => self.random(vx, byte),
+            Opcode::RegDump(vx) => self.reg_dump(vx)?,
             _ => unimplemented!(),
         }
         Ok(())
     }
 
+    fn reg_dump(&mut self, vx: u8) -> Result<(), Chip8Error> {
+        for reg in 0..=vx {
+            let reg_val = self.registers.read_v(reg);
+            self.memory
+                .write_byte(self.registers.i as usize + reg as usize, reg_val)?;
+        }
+        Ok(())
+    }
     fn random(&mut self, vx: u8, byte: u8) {
         let random_byte = random::<u8>();
         self.registers.write_v(vx, random_byte & byte);
@@ -336,9 +352,42 @@ mod tests {
     fn test_chip8_execute_random() {
         let mut chip8 = Chip8::new();
 
-        chip8.execute(Opcode::Random(0x0, 0b11001100));
+        chip8.execute(Opcode::Random(0x0, 0b11001100)).unwrap();
 
         let result = chip8.registers.read_v(0x0);
         assert_eq!(result & 0b11001100, result);
+    }
+    #[test]
+    fn test_chip8_execute_reg_dump() {
+        let mut chip8 = Chip8::new();
+        chip8.registers.write_v(0x0, 0x01);
+        chip8.registers.write_v(0x1, 0x02);
+        chip8.registers.write_v(0x2, 0x03);
+        chip8.registers.write_v(0x3, 0x04);
+        chip8.registers.i = 0x100;
+
+        chip8.execute(Opcode::RegDump(0x3)).unwrap();
+
+        assert_eq!(chip8.memory.read_byte(0x100), Ok(0x01));
+        assert_eq!(chip8.memory.read_byte(0x101), Ok(0x02));
+        assert_eq!(chip8.memory.read_byte(0x102), Ok(0x03));
+        assert_eq!(chip8.memory.read_byte(0x103), Ok(0x04));
+    }
+
+    #[test]
+    fn test_chip8_execute_reg_dump_memory_error() {
+        let mut chip8 = Chip8::new();
+        chip8.registers.write_v(0x0, 0x01);
+        chip8.registers.write_v(0x1, 0x02);
+        chip8.registers.write_v(0x2, 0x03);
+        chip8.registers.write_v(0x3, 0x04);
+        chip8.registers.i = 0xFFFF;
+
+        let result = chip8.execute(Opcode::RegDump(0x3));
+
+        assert_eq!(
+            result.unwrap_err(),
+            Chip8Error::MemoryError(memory::MemoryError::AddressOutOfBounds)
+        );
     }
 }
