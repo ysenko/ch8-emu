@@ -60,9 +60,24 @@ impl Chip8 {
             Opcode::AddReg(vx, vy) => self.add_reg(vx, vy),
             Opcode::And(vx, vy) => self.and(vx, vy),
             Opcode::Call(addr) => self.call(addr)?,
+            Opcode::Jump(addr) => self.jump(addr),
+            Opcode::JumpV0(addr) => self.jump_v0(addr),
+            Opcode::LoadByte(vx, byte) => self.load_byte(vx, byte),
             _ => unimplemented!(),
         }
         Ok(())
+    }
+
+    fn load_byte(&mut self, vx: u8, byte: u8) {
+        self.registers.write_v(vx, byte);
+    }
+
+    fn jump_v0(&mut self, addr: u16) {
+        self.jump(self.registers.read_v(0) as u16 + addr);
+    }
+
+    fn jump(&mut self, addr: u16) {
+        self.registers.pc = addr;
     }
 
     fn call(&mut self, addr: u16) -> Result<(), Chip8Error> {
@@ -232,5 +247,32 @@ mod tests {
             Chip8Error::StackError(stack::StackError::StackOverflow)
         );
         assert_eq!(chip8.registers.pc, 0x200);
+    }
+    #[test]
+    fn test_chip8_execute_jump() {
+        let mut chip8 = Chip8::new();
+
+        chip8.execute(Opcode::Jump(0x300)).unwrap();
+
+        assert_eq!(chip8.registers.pc, 0x300);
+    }
+
+    #[test]
+    fn test_chip8_execute_jump_v0() {
+        let mut chip8 = Chip8::new();
+        chip8.registers.write_v(0x0, 0x01);
+
+        chip8.execute(Opcode::JumpV0(0x300)).unwrap();
+
+        assert_eq!(chip8.registers.pc, 0x301);
+    }
+
+    #[test]
+    fn test_chip8_execute_load_byte() {
+        let mut chip8 = Chip8::new();
+
+        chip8.execute(Opcode::LoadByte(0x0, 0xFF)).unwrap();
+
+        assert_eq!(chip8.registers.read_v(0x0), 0xFF);
     }
 }
