@@ -77,8 +77,14 @@ impl Chip8 {
             Opcode::Random(vx, byte) => self.random(vx, byte),
             Opcode::RegDump(vx) => self.reg_dump(vx)?,
             Opcode::RegLoad(vx) => self.reg_load(vx)?,
+            Opcode::Return => self.return_from()?,
             _ => unimplemented!(),
         }
+        Ok(())
+    }
+
+    fn return_from(&mut self) -> Result<(), Chip8Error> {
+        self.registers.pc = self.stack.pop()?;
         Ok(())
     }
 
@@ -424,5 +430,28 @@ mod tests {
             result.unwrap_err(),
             Chip8Error::MemoryError(memory::MemoryError::AddressOutOfBounds)
         );
+    }
+    #[test]
+    fn test_chip8_execute_return() {
+        let mut chip8 = Chip8::new();
+        chip8.stack.push(0x300).unwrap();
+
+        chip8.execute(Opcode::Return).unwrap();
+
+        assert_eq!(chip8.registers.pc, 0x300);
+    }
+
+    #[test]
+    fn test_chip8_execute_return_empty_stack() {
+        let mut chip8 = Chip8::new();
+        chip8.registers.pc = 0x200;
+
+        let result = chip8.execute(Opcode::Return);
+
+        assert_eq!(
+            result.unwrap_err(),
+            Chip8Error::StackError(stack::StackError::StackUnderflow)
+        );
+        assert_eq!(chip8.registers.pc, 0x200);
     }
 }
