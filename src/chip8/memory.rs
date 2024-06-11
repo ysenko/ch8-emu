@@ -5,6 +5,7 @@ pub enum MemoryError {
     AddressOutOfBounds,
 }
 
+#[derive(Debug)]
 pub struct Memory {
     memory: [u8; MEMORY_SIZE],
 }

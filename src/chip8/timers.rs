@@ -1,3 +1,4 @@
+#[derive(Debug)]
 pub struct Timers {
     delay_timer: u8,
     sound_timer: u8,

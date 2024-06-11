@@ -8,6 +8,7 @@ mod timers;
 
 const PROGRAM_START_ADDRESS: usize = 0x200;
 
+#[derive(Debug)]
 pub struct Chip8 {
     memory: memory::Memory,
     registers: registers::Registers,

@@ -6,6 +6,7 @@ pub enum StackError {
 
 const STACK_SIZE: usize = 16;
 
+#[derive(Debug)]
 pub struct Stack {
     stack: [u16; STACK_SIZE], // Array to hold 16 levels of the stack
     sp: usize,                // Stack pointer to track the current level (0-15)
