@@ -1,6 +1,6 @@
 use opcodes::{Opcode, OpcodeError};
 use rand::random;
-use std::{convert::From, ops::Shl};
+use std::{convert::From};
 
 mod display;
 mod input;
@@ -17,6 +17,7 @@ pub enum Chip8Error {
     StackError(stack::StackError),
     MemoryError(memory::MemoryError),
     OpcodeError(OpcodeError),
+    BootError
 }
 
 impl From<stack::StackError> for Chip8Error {
@@ -65,6 +66,23 @@ impl Chip8 {
     pub fn load_rom_from_file(&mut self, path: &str) -> Result<(), std::io::Error> {
         let rom = std::fs::read(path)?;
         self.load_rom(&rom);
+        Ok(())
+    }
+
+    pub fn boot(&mut self) -> Result<(), Chip8Error> {
+        self.registers.pc = PROGRAM_START_ADDRESS as u16;
+        self.load_sprites()
+    }
+
+    fn load_sprites(&mut self) -> Result<(), Chip8Error> {
+        let sprite_size = display::SPRITES[0].len() as usize;
+        for (sprite_idx, sprite) in display::SPRITES.iter().enumerate() {
+            for (byte_idx, &byte) in sprite.iter().enumerate() {
+                let write_addr = display::SPRITE_START_ADDRESS + sprite_idx * sprite_size + byte_idx;
+                self.memory
+                    .write_byte(write_addr, byte)?;
+            }
+        }
         Ok(())
     }
 
@@ -832,5 +850,17 @@ mod tests {
 
         assert_eq!(chip8.registers.read_v(0x0), 0xFF);
         assert_eq!(chip8.registers.read_v(0xF), 0x0);
+    }
+
+    #[test]
+    fn test_chip8_load_sprites() {
+        let mut chip8 = Chip8::new();
+        chip8.load_sprites();
+        for (sprite_idx, sprite) in display::SPRITES.iter().enumerate() {
+            for (byte_idx, &byte) in sprite.iter().enumerate() {
+                let read_addr = display::SPRITE_START_ADDRESS + sprite_idx * sprite.len() + byte_idx;
+                assert_eq!(chip8.memory.read_byte(read_addr), Ok(byte));
+            }
+        }
     }
 }
