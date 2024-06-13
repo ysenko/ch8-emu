@@ -58,6 +58,14 @@ impl Display {
         }
     }
 
+    pub fn clear(&mut self) {
+        for row in self.buffer.iter_mut() {
+            for pixel in row.iter_mut() {
+                *pixel = 0;
+            }
+        }
+    }
+
     pub fn draw_sprite(&mut self, row: usize, col: usize, sprite_value: &SpriteValue) -> bool {
         let mut erased = false;
         for (row_delta, &sprite_row) in sprite_value.iter().enumerate() {
@@ -287,5 +295,19 @@ mod tests {
         let original = 0b1010_1010;
         let current = 0b0000_0000;
         assert_eq!(bit_erased(original, current), true);
+    }
+
+    #[test]
+    fn test_clear() {
+        let mut display = Display::new();
+        display.draw_sprite(0, 0, &BUILT_IN_SPRITES[0].to_vec());
+
+        display.clear();
+
+        for row in display.buffer.iter() {
+            for &pixel in row.iter() {
+                assert_eq!(pixel, 0);
+            }
+        }
     }
 }

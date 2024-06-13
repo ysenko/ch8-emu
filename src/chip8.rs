@@ -129,13 +129,17 @@ impl Chip8 {
             Opcode::Draw(vx, vy, n) => self.draw(vx, vy, n)?,
             Opcode::SkipIfKeyNotPressed(vx) => unimplemented!(),
             Opcode::SkipIfKeyPressed(vx) => unimplemented!(),
-            Opcode::ClearDisplay => unimplemented!(),
+            Opcode::ClearDisplay => self.clear_display(),
             Opcode::WaitForKey(vx) => unimplemented!(),
             Opcode::Undefined(opcode) => {
                 return Err(Chip8Error::OpcodeError(OpcodeError::InvalidOpcode(opcode)))
             }
         }
         Ok(())
+    }
+
+    fn clear_display(&mut self) {
+        self.display.clear();
     }
 
     fn draw(&mut self, vx: u8, vy: u8, n: u8) -> Result<(), Chip8Error> {
@@ -946,5 +950,17 @@ mod tests {
         assert!(res.is_ok());
 
         assert_eq!(chip8.registers.read_v(0xF), 1);
+    }
+
+    #[test]
+    fn test_chip8_execute_clear_display() {
+        let mut chip8 = Chip8::new();
+        chip8.boot().unwrap();
+        chip8
+            .display
+            .draw_sprite(0, 0, &display::BUILT_IN_SPRITES[0].to_vec());
+
+        let res = chip8.execute(Opcode::ClearDisplay);
+        assert_eq!(res, Ok(()));
     }
 }
