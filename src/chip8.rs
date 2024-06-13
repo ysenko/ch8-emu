@@ -1,6 +1,6 @@
 use opcodes::{Opcode, OpcodeError};
 use rand::random;
-use std::{convert::From};
+use std::convert::From;
 
 mod display;
 mod input;
@@ -17,7 +17,7 @@ pub enum Chip8Error {
     StackError(stack::StackError),
     MemoryError(memory::MemoryError),
     OpcodeError(OpcodeError),
-    BootError
+    DisplayError(display::DisplayError),
 }
 
 impl From<stack::StackError> for Chip8Error {
@@ -35,6 +35,12 @@ impl From<memory::MemoryError> for Chip8Error {
 impl From<OpcodeError> for Chip8Error {
     fn from(err: OpcodeError) -> Chip8Error {
         Chip8Error::OpcodeError(err)
+    }
+}
+
+impl From<display::DisplayError> for Chip8Error {
+    fn from(err: display::DisplayError) -> Chip8Error {
+        Chip8Error::DisplayError(err)
     }
 }
 
@@ -78,9 +84,9 @@ impl Chip8 {
         let sprite_size = display::SPRITES[0].len() as usize;
         for (sprite_idx, sprite) in display::SPRITES.iter().enumerate() {
             for (byte_idx, &byte) in sprite.iter().enumerate() {
-                let write_addr = display::SPRITE_START_ADDRESS + sprite_idx * sprite_size + byte_idx;
-                self.memory
-                    .write_byte(write_addr, byte)?;
+                let write_addr =
+                    display::SPRITE_START_ADDRESS + sprite_idx * sprite_size + byte_idx;
+                self.memory.write_byte(write_addr, byte)?;
             }
         }
         Ok(())
@@ -117,7 +123,7 @@ impl Chip8 {
             Opcode::Xor(vx, vy) => self.xor(vx, vy),
             Opcode::StoreBCD(vx) => self.store_bcd(vx),
             Opcode::SysAddr(addr) => {}
-            Opcode::LoadSpriteAddr(vx) => unimplemented!(),
+            Opcode::LoadSpriteAddr(vx) => self.load_sprite_addr(vx)?,
             Opcode::Draw(vx, vy, n) => unimplemented!(),
             Opcode::SkipIfKeyNotPressed(vx) => unimplemented!(),
             Opcode::SkipIfKeyPressed(vx) => unimplemented!(),
@@ -127,6 +133,13 @@ impl Chip8 {
                 return Err(Chip8Error::OpcodeError(OpcodeError::InvalidOpcode(opcode)))
             }
         }
+        Ok(())
+    }
+
+    fn load_sprite_addr(&mut self, vx: u8) -> Result<(), Chip8Error> {
+        let sprite = self.registers.read_v(vx);
+        let addr = display::Display::get_sprite_address(sprite)?;
+        self.registers.i = addr as u16;
         Ok(())
     }
 
@@ -858,9 +871,32 @@ mod tests {
         chip8.load_sprites();
         for (sprite_idx, sprite) in display::SPRITES.iter().enumerate() {
             for (byte_idx, &byte) in sprite.iter().enumerate() {
-                let read_addr = display::SPRITE_START_ADDRESS + sprite_idx * sprite.len() + byte_idx;
+                let read_addr =
+                    display::SPRITE_START_ADDRESS + sprite_idx * sprite.len() + byte_idx;
                 assert_eq!(chip8.memory.read_byte(read_addr), Ok(byte));
             }
         }
+    }
+
+    #[test]
+    fn test_chip8_execute_load_sprite_addr() {
+        let mut chip8 = Chip8::new();
+        chip8.registers.write_v(0xF, 0x0F);
+
+        chip8.execute(Opcode::LoadSpriteAddr(0xF)).unwrap();
+
+        assert_eq!(chip8.registers.i, 0x4B);
+    }
+
+    #[test]
+    fn test_chip8_load_sprite_address_invalid_sprite() {
+        let mut chip8 = Chip8::new();
+        let register = 0xF;
+        chip8.registers.write_v(register, 0x10);
+
+        assert_eq!(
+            chip8.execute(Opcode::LoadSpriteAddr(register)).unwrap_err(),
+            Chip8Error::DisplayError(display::DisplayError::InvalidSprite(0x10))
+        );
     }
 }
