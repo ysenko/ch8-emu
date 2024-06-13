@@ -50,6 +50,7 @@ pub struct Chip8 {
     registers: registers::Registers,
     stack: stack::Stack,
     timers: timers::Timers,
+    display: display::Display,
 }
 
 impl Chip8 {
@@ -59,6 +60,7 @@ impl Chip8 {
             registers: registers::Registers::new(),
             stack: stack::Stack::new(),
             timers: timers::Timers::new(),
+            display: display::Display::new(),
         }
     }
 
@@ -81,8 +83,8 @@ impl Chip8 {
     }
 
     fn load_sprites(&mut self) -> Result<(), Chip8Error> {
-        let sprite_size = display::SPRITES[0].len() as usize;
-        for (sprite_idx, sprite) in display::SPRITES.iter().enumerate() {
+        let sprite_size = display::BUILT_IN_SPRITES[0].len() as usize;
+        for (sprite_idx, sprite) in display::BUILT_IN_SPRITES.iter().enumerate() {
             for (byte_idx, &byte) in sprite.iter().enumerate() {
                 let write_addr =
                     display::SPRITE_START_ADDRESS + sprite_idx * sprite_size + byte_idx;
@@ -124,7 +126,7 @@ impl Chip8 {
             Opcode::StoreBCD(vx) => self.store_bcd(vx),
             Opcode::SysAddr(addr) => {}
             Opcode::LoadSpriteAddr(vx) => self.load_sprite_addr(vx)?,
-            Opcode::Draw(vx, vy, n) => unimplemented!(),
+            Opcode::Draw(vx, vy, n) => self.draw(vx, vy, n)?,
             Opcode::SkipIfKeyNotPressed(vx) => unimplemented!(),
             Opcode::SkipIfKeyPressed(vx) => unimplemented!(),
             Opcode::ClearDisplay => unimplemented!(),
@@ -133,6 +135,25 @@ impl Chip8 {
                 return Err(Chip8Error::OpcodeError(OpcodeError::InvalidOpcode(opcode)))
             }
         }
+        Ok(())
+    }
+
+    fn draw(&mut self, vx: u8, vy: u8, n: u8) -> Result<(), Chip8Error> {
+        let col = self.registers.read_v(vx);
+        let row = self.registers.read_v(vy);
+
+        let sprite_addr = self.registers.i as usize;
+        let mut sprite: Vec<u8> = vec![];
+        for offset in 0..n {
+            let sprite_byte = self.memory.read_byte(sprite_addr + offset as usize)?;
+            sprite.push(sprite_byte);
+        }
+
+        let erased = self
+            .display
+            .draw_sprite(row as usize, col as usize, &sprite);
+
+        self.registers.write_v(0xF, if erased { 1 } else { 0 });
         Ok(())
     }
 
@@ -869,7 +890,7 @@ mod tests {
     fn test_chip8_load_sprites() {
         let mut chip8 = Chip8::new();
         chip8.load_sprites();
-        for (sprite_idx, sprite) in display::SPRITES.iter().enumerate() {
+        for (sprite_idx, sprite) in display::BUILT_IN_SPRITES.iter().enumerate() {
             for (byte_idx, &byte) in sprite.iter().enumerate() {
                 let read_addr =
                     display::SPRITE_START_ADDRESS + sprite_idx * sprite.len() + byte_idx;
@@ -898,5 +919,32 @@ mod tests {
             chip8.execute(Opcode::LoadSpriteAddr(register)).unwrap_err(),
             Chip8Error::DisplayError(display::DisplayError::InvalidSprite(0x10))
         );
+    }
+
+    #[test]
+    fn test_chip8_execute_draw() {
+        let mut chip8 = Chip8::new();
+        chip8.boot().unwrap();
+        chip8.registers.i = display::SPRITE_START_ADDRESS as u16;
+
+        let res = chip8.execute(Opcode::Draw(0, 0, 5));
+        assert!(res.is_ok());
+
+        assert_eq!(chip8.registers.read_v(0xF), 0); // No pixels were erased.
+    }
+
+    #[test]
+    fn test_chip8_execute_draw_erased_pixels_reported() {
+        let mut chip8 = Chip8::new();
+        chip8.boot().unwrap();
+        chip8.registers.i = display::SPRITE_START_ADDRESS as u16;
+
+        let res = chip8.execute(Opcode::Draw(0, 0, 5));
+        assert!(res.is_ok());
+        // The following draw will erase a single pixel.
+        let res = chip8.execute(Opcode::Draw(4, 0, 5));
+        assert!(res.is_ok());
+
+        assert_eq!(chip8.registers.read_v(0xF), 1);
     }
 }
