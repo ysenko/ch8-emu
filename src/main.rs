@@ -1,6 +1,9 @@
 mod chip8;
 
 fn main() {
-    let system = chip8::Chip8::new();
+    let mut system = chip8::Chip8::new();
+
+    system.boot().unwrap();
+
     println!("{:?}", system)
 }

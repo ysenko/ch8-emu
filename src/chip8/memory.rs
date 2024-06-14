@@ -7,13 +7,13 @@ pub enum MemoryError {
 
 #[derive(Debug)]
 pub struct Memory {
-    memory: [u8; MEMORY_SIZE],
+    ram: [u8; MEMORY_SIZE],
 }
 
 impl Memory {
     pub fn new() -> Memory {
         Memory {
-            memory: [0; MEMORY_SIZE],
+            ram: [0; MEMORY_SIZE],
         }
     }
 
@@ -21,7 +21,7 @@ impl Memory {
         if address >= MEMORY_SIZE {
             Err(MemoryError::AddressOutOfBounds)
         } else {
-            Ok(self.memory[address])
+            Ok(self.ram[address])
         }
     }
 
@@ -29,7 +29,7 @@ impl Memory {
         if address >= MEMORY_SIZE {
             Err(MemoryError::AddressOutOfBounds)
         } else {
-            self.memory[address] = value;
+            self.ram[address] = value;
             Ok(())
         }
     }
