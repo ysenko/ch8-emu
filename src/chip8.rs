@@ -18,6 +18,7 @@ pub enum Chip8Error {
     MemoryError(memory::MemoryError),
     OpcodeError(OpcodeError),
     DisplayError(display::DisplayError),
+    InputError(input::Error),
 }
 
 impl From<stack::StackError> for Chip8Error {
@@ -51,6 +52,7 @@ pub struct Chip8 {
     stack: stack::Stack,
     timers: timers::Timers,
     display: display::Display,
+    input: input::Input,
 }
 
 impl Chip8 {
@@ -61,6 +63,7 @@ impl Chip8 {
             stack: stack::Stack::new(),
             timers: timers::Timers::new(),
             display: display::Display::new(),
+            input: input::Input::new(),
         }
     }
 
@@ -92,6 +95,24 @@ impl Chip8 {
             }
         }
         Ok(())
+    }
+
+    pub fn press_key(&mut self, key: &str) {
+        self.input.set_key(key);
+    }
+
+    pub fn release_key(&mut self) {
+        self.input.clear_key();
+    }
+
+    fn get_pressed_key(&self) -> Option<&str> {
+        self.input.get_key()
+    }
+
+    fn get_pressed_key_u8(&self) -> Result<Option<u8>, Chip8Error> {
+        self.input
+            .get_key_u8()
+            .map_err(|err| Chip8Error::InputError(err))
     }
 
     fn execute(&mut self, op: Opcode) -> Result<(), Chip8Error> {
@@ -127,15 +148,41 @@ impl Chip8 {
             Opcode::SysAddr(addr) => {}
             Opcode::LoadSpriteAddr(vx) => self.load_sprite_addr(vx)?,
             Opcode::Draw(vx, vy, n) => self.draw(vx, vy, n)?,
-            Opcode::SkipIfKeyNotPressed(vx) => unimplemented!(),
-            Opcode::SkipIfKeyPressed(vx) => unimplemented!(),
+            Opcode::SkipIfKeyNotPressed(vx) => self.skip_if_not_pressed(vx),
+            Opcode::SkipIfKeyPressed(vx) => self.skip_if_pressed(vx),
             Opcode::ClearDisplay => self.clear_display(),
-            Opcode::WaitForKey(vx) => unimplemented!(),
+            Opcode::WaitForKey(vx) => self.wait_for_key(vx)?,
             Opcode::Undefined(opcode) => {
                 return Err(Chip8Error::OpcodeError(OpcodeError::InvalidOpcode(opcode)))
             }
         }
         Ok(())
+    }
+
+    fn wait_for_key(&mut self, vx: u8) -> Result<(), Chip8Error> {
+        let key = self.get_pressed_key_u8()?;
+
+        match key {
+            Some(key) => self.registers.write_v(vx, key),
+            None => self.registers.pc -= 2,
+        }
+        Ok(())
+    }
+
+    fn skip_if_pressed(&mut self, vx: u8) {
+        let key = self.get_pressed_key();
+        let expected_key = format!("{:x}", self.registers.read_v(vx));
+        if key.is_some() && key.unwrap() == expected_key {
+            self.registers.pc += 2;
+        }
+    }
+
+    fn skip_if_not_pressed(&mut self, vx: u8) {
+        let key = self.get_pressed_key();
+        let expected_key = format!("{:x}", self.registers.read_v(vx));
+        if key.is_none() || key.unwrap() != expected_key {
+            self.registers.pc += 2;
+        }
     }
 
     fn clear_display(&mut self) {
@@ -962,5 +1009,103 @@ mod tests {
 
         let res = chip8.execute(Opcode::ClearDisplay);
         assert_eq!(res, Ok(()));
+    }
+
+    #[test]
+    fn test_chip8_execute_skip_if_not_pressed_skips_on_wrong_key_press() {
+        let mut chip8 = Chip8::new();
+        chip8.press_key("1");
+        chip8.registers.write_v(0x0, 0xf);
+        chip8.registers.pc = 0x200;
+
+        chip8.execute(Opcode::SkipIfKeyNotPressed(0x0)).unwrap();
+
+        assert_eq!(chip8.registers.pc, 0x202);
+    }
+
+    #[test]
+    fn test_chip8_execute_skip_if_not_pressed() {
+        let mut chip8 = Chip8::new();
+        chip8.release_key();
+        chip8.registers.write_v(0x0, 0xf);
+        chip8.registers.pc = 0x200;
+
+        chip8.execute(Opcode::SkipIfKeyNotPressed(0x0)).unwrap();
+
+        assert_eq!(chip8.registers.pc, 0x202);
+    }
+
+    #[test]
+    fn test_chip8_execute_skip_if_not_pressed_not_skips() {
+        let mut chip8 = Chip8::new();
+        chip8.press_key("f");
+        chip8.registers.write_v(0x0, 0xf);
+        chip8.registers.pc = 0x200;
+
+        chip8.execute(Opcode::SkipIfKeyNotPressed(0x0)).unwrap();
+
+        assert_eq!(chip8.registers.pc, 0x200);
+    }
+
+    #[test]
+    fn test_chip8_execute_skip_if_pressed_does_not_skip_on_wrong_key_press() {
+        let mut chip8 = Chip8::new();
+        chip8.press_key("1");
+        chip8.registers.write_v(0x0, 0xf);
+        chip8.registers.pc = 0x200;
+
+        chip8.execute(Opcode::SkipIfKeyPressed(0x0)).unwrap();
+
+        assert_eq!(chip8.registers.pc, 0x200);
+    }
+
+    #[test]
+    fn test_chip8_execute_skip_if_pressed() {
+        let mut chip8 = Chip8::new();
+        chip8.press_key("f");
+        chip8.registers.write_v(0x0, 0xf);
+        chip8.registers.pc = 0x200;
+
+        chip8.execute(Opcode::SkipIfKeyPressed(0x0)).unwrap();
+
+        assert_eq!(chip8.registers.pc, 0x202);
+    }
+
+    #[test]
+    fn test_chip8_execute_skip_does_not_skip_when_key_not_pressed() {
+        let mut chip8 = Chip8::new();
+        chip8.release_key();
+        chip8.registers.write_v(0x0, 0xf);
+        chip8.registers.pc = 0x200;
+
+        chip8.execute(Opcode::SkipIfKeyPressed(0x0)).unwrap();
+
+        assert_eq!(chip8.registers.pc, 0x200);
+    }
+
+    #[test]
+    fn test_chip8_wait_for_key() {
+        let mut chip8 = Chip8::new();
+        chip8.press_key("1");
+        chip8.registers.write_v(0x0, 0x0);
+        chip8.registers.pc = 0x200;
+
+        chip8.wait_for_key(0x0).unwrap();
+
+        assert_eq!(chip8.registers.read_v(0x0), 0x1);
+        assert_eq!(chip8.registers.pc, 0x200);
+    }
+
+    #[test]
+    fn test_chip8_wait_for_key_no_key_pressed() {
+        let mut chip8 = Chip8::new();
+        chip8.release_key();
+        chip8.registers.write_v(0x0, 0x0);
+        chip8.registers.pc = 0x200;
+
+        chip8.wait_for_key(0x0).unwrap();
+
+        assert_eq!(chip8.registers.read_v(0x0), 0x0);
+        assert_eq!(chip8.registers.pc, 0x1fe);
     }
 }
